@@ -385,7 +385,7 @@
             </section>
 
             <div class="button-group">
-                <button class="btn-secondary" onclick="copyToEditor()">📋 Take text from above and edit</button>
+                <button class="btn-secondary" onclick="copyToEditor()">📋 Copy to Editor</button>
                 <button class="btn-primary" onclick="copyResult()">📄 Copy Edited Text</button>
                 <button class="btn-info" onclick="saveToHistory()">💾 Save to History</button>
                 <button class="btn-danger" onclick="clearAll()">🗑️ Clear All</button>
@@ -758,7 +758,144 @@
             }, 1500);
         }
 
-        // Copy prompt to clipboard
+        // Enhanced clipboard function with fallbacks
+        async function copyToClipboard(text, buttonElement = null) {
+            // Method 1: Modern Clipboard API
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    showCopySuccess(buttonElement);
+                    return true;
+                } catch (err) {
+                    console.log('Clipboard API failed, trying fallback');
+                }
+            }
+            
+            // Method 2: Fallback for older browsers or insecure contexts
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                if (successful) {
+                    showCopySuccess(buttonElement);
+                    return true;
+                }
+            } catch (err) {
+                console.log('Fallback copy failed');
+            }
+            
+            // Method 3: Manual copy instruction
+            showManualCopyInstructions(text);
+            return false;
+        }
+
+        // Show success feedback
+        function showCopySuccess(buttonElement) {
+            if (buttonElement) {
+                const originalText = buttonElement.textContent;
+                const originalBackground = buttonElement.style.background;
+                buttonElement.textContent = '✅ Copied!';
+                buttonElement.style.background = 'linear-gradient(135deg, #00b894, #00a085)';
+                setTimeout(() => {
+                    buttonElement.textContent = originalText;
+                    buttonElement.style.background = originalBackground;
+                }, 2000);
+            }
+            
+            // Show toast notification
+            showToast('✅ Copied to clipboard!', 'success');
+        }
+
+        // Show manual copy instructions when automatic copy fails
+        function showManualCopyInstructions(text) {
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.8); display: flex; align-items: center; 
+                justify-content: center; z-index: 10000; backdrop-filter: blur(5px);
+            `;
+            
+            const content = document.createElement('div');
+            content.style.cssText = `
+                background: white; padding: 30px; border-radius: 15px; max-width: 90%; 
+                max-height: 80%; overflow: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            `;
+            
+            content.innerHTML = `
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h3 style="color: #2d3436; margin-bottom: 10px;">📋 Copy This Text</h3>
+                    <p style="color: #6c757d;">Automatic copy failed. Please copy manually:</p>
+                </div>
+                <textarea readonly style="
+                    width: 100%; height: 200px; padding: 15px; border: 2px solid #74b9ff;
+                    border-radius: 8px; font-family: monospace; font-size: 14px;
+                    resize: vertical; background: #f8f9fa;
+                " onclick="this.select()">${text}</textarea>
+                <div style="text-align: center; margin-top: 20px;">
+                    <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                            style="padding: 10px 20px; background: linear-gradient(135deg, #74b9ff, #0984e3); 
+                                   color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                        ✅ Done
+                    </button>
+                </div>
+                <div style="text-align: center; margin-top: 15px;">
+                    <p style="color: #6c757d; font-size: 12px;">
+                        💡 Tip: Click the textarea above to select all text, then Ctrl+C (Cmd+C on Mac)
+                    </p>
+                </div>
+            `;
+            
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+            
+            // Close on background click
+            modal.onclick = (e) => {
+                if (e.target === modal) modal.remove();
+            };
+            
+            // Auto-select text
+            const textarea = content.querySelector('textarea');
+            setTimeout(() => textarea.select(), 100);
+        }
+
+        // Toast notification system
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'linear-gradient(135deg, #00b894, #00a085)',
+                error: 'linear-gradient(135deg, #fd79a8, #e84393)',
+                info: 'linear-gradient(135deg, #74b9ff, #0984e3)'
+            };
+            
+            toast.style.cssText = `
+                position: fixed; top: 20px; right: 20px; z-index: 10000;
+                background: ${colors[type]}; color: white; padding: 15px 20px;
+                border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                transform: translateX(400px); transition: all 0.3s ease;
+                font-weight: 500; max-width: 300px;
+            `;
+            
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // Animate in
+            setTimeout(() => toast.style.transform = 'translateX(0)', 100);
+            
+            // Animate out and remove
+            setTimeout(() => {
+                toast.style.transform = 'translateX(400px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
         async function copyPrompt() {
             const promptText = document.getElementById('promptText').value;
             if (!promptText.trim()) {
@@ -839,23 +976,11 @@
         async function copyResult() {
             const editedText = document.getElementById('editedText').value;
             if (!editedText.trim()) {
-                alert('Nothing to copy! Please edit some content first.');
+                showToast('❌ Nothing to copy! Please edit some content first.', 'error');
                 return;
             }
             
-            try {
-                await navigator.clipboard.writeText(editedText);
-                const button = event.target;
-                const originalText = button.textContent;
-                button.textContent = '✅ Copied!';
-                button.style.background = 'linear-gradient(135deg, #00b894, #00a085)';
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.background = 'linear-gradient(135deg, #00b894, #00a085)';
-                }, 1500);
-            } catch (err) {
-                alert('Failed to copy to clipboard');
-            }
+            await copyToClipboard(editedText, event.target);
         }
 
         // Save to history
